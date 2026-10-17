@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QuotTracker AI</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafb;color:#17212b;min-height:100vh;display:flex}
+button,input{font-family:inherit}
+button{cursor:pointer}
+a{color:inherit;text-decoration:none}
+.ti{font-family:inherit;font-style:normal;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.ti-sparkles:before{content:"✦"}
+.ti-layout-dashboard:before{content:"▦"}
+.ti-upload:before,.ti-file-upload:before{content:"↑"}
+.ti-inbox:before{content:"▱"}
+.ti-bell:before{content:"!"}
+.ti-refresh:before{content:"↻"}
+.ti-coin:before{content:"¤"}
+.ti-search:before{content:"⌕"}
+.ti-download:before{content:"↓"}
+.ti-x:before{content:"×"}
+.ti-file-spreadsheet:before{content:"▤"}
+.ti-circle-check:before{content:"✓"}
+#authOverlay{position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(248,250,251,.96)}
+#authOverlay[hidden]{display:none}
+.auth-card{width:100%;max-width:380px;padding:30px;background:#fff;border:1px solid #e5ebee;border-radius:16px;box-shadow:0 18px 50px rgba(34,56,70,.12)}
+.auth-card h1{font-size:22px;margin-bottom:8px}
+.auth-card p{font-size:13px;color:#81909a;line-height:1.5;margin-bottom:20px}
+.auth-card label{display:block;font-size:12px;font-weight:600;margin:14px 0 6px}
+.auth-card input{width:100%;height:40px;border:1px solid #dfe6e9;border-radius:8px;padding:0 11px;font-size:14px}
+.auth-error{min-height:18px;margin-top:10px;color:#b42318;font-size:12px}
+body.auth-locked #sidebar,body.auth-locked #main{filter:blur(3px);pointer-events:none;user-select:none}
+
+/* ── LAYOUT ─────────────────────────────────────────────────── */
+#sidebar{width:238px;background:#fff;border-right:1px solid #e6ecef;padding:24px 20px;display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:50}
+#main{margin-left:238px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+
+/* ── SIDEBAR ────────────────────────────────────────────────── */
+.logo{display:flex;align-items:center;gap:12px;padding:0 8px;margin-bottom:40px}
+.logo-icon{width:36px;height:36px;background:#e9795c;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;box-shadow:0 2px 8px rgba(233,121,92,.25);flex-shrink:0}
+.logo-name{font-size:15px;font-weight:600;letter-spacing:-.02em}
+.logo-sub{font-size:11px;color:#91a0aa;margin-top:1px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-size:12px;font-weight:500;color:#71808a;background:none;border:none;width:100%;text-align:left;margin-bottom:2px;transition:background .12s,color .12s}
+.nav-item:hover{background:#f7f9fa}
+.nav-item.active{background:#fff1ee;color:#d7654b}
+.nav-item i{font-size:17px;color:#9ba7ad;flex-shrink:0}
+.nav-item.active i{color:#e9795c}
+.nav-badge{margin-left:auto;background:#f0f3f4;color:#96a2a8;font-size:10px;padding:2px 6px;border-radius:20px}
+.nav-item.active .nav-badge{background:#fff;color:#d7654b}
+.nav-section{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:#aab5bc;padding:24px 12px 8px}
+.sidebar-footer{background:#f7f9fa;border-radius:16px;padding:16px;margin-top:auto}
+.sf-row{display:flex;justify-content:space-between;margin-bottom:10px}
+.sf-label{font-size:11px;font-weight:500;color:#6d7d87}
+.sf-value{font-size:11px;font-weight:600;color:#238653}
+.progress-track{height:6px;background:#e5eaed;border-radius:99px;overflow:hidden}
+.progress-fill{height:100%;background:#63b58b;border-radius:99px;transition:width .4s}
+.sf-note{margin-top:10px;font-size:11px;color:#99a5ac;line-height:1.5}
+
+/* ── TOPBAR ─────────────────────────────────────────────────── */
+#topbar{height:76px;background:#fff;border-bottom:1px solid #e6ecef;display:flex;align-items:center;justify-content:space-between;padding:0 40px;flex-shrink:0}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;color:#87949d}
+.breadcrumb .current{color:#17212b;font-weight:500}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.icon-btn{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#84929b;background:none;border:none;font-size:18px;position:relative;transition:background .12s}
+.icon-btn:hover{background:#f5f7f8}
+.notif-dot{position:absolute;right:6px;top:6px;width:6px;height:6px;border-radius:50%;background:#e9795c}
+.vdivider{width:1px;height:24px;background:#e8edef;margin:0 4px}
+.user-btn{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:8px;background:none;border:none;transition:background .12s}
+.user-btn:hover{background:#f5f7f8}
+.avatar{width:32px;height:32px;border-radius:50%;background:#d9eee4;color:#31805a;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.user-name{font-size:12px;font-weight:600;color:#17212b;text-align:left}
+.user-role{font-size:10px;color:#94a0a8;text-align:left}
+
+/* ── CONTENT ─────────────────────────────────────────────────── */
+#content{flex:1;padding:36px 40px}
+.inner{max-width:1320px;margin:0 auto}
+.page-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:32px;gap:20px;flex-wrap:wrap}
+.page-date{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.17em;color:#e9795c;margin-bottom:8px}
+.page-title{font-size:30px;font-weight:600;letter-spacing:-.04em;margin-bottom:8px}
+.page-sub{font-size:14px;color:#81909a}
+.btn-row{display:flex;gap:8px;flex-shrink:0}
+.btn-outline{height:40px;padding:0 16px;border:1px solid #e5ebee;background:#fff;border-radius:8px;font-size:13px;font-weight:600;color:#687983;display:flex;align-items:center;gap:8px;transition:border-color .12s,color .12s}
+.btn-outline:hover{border-color:#e9795c;color:#d7654b}
+.btn-primary{height:40px;padding:0 16px;background:#e9795c;border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;display:flex;align-items:center;gap:8px;box-shadow:0 4px 10px rgba(233,121,92,.2);transition:background .12s}
+.btn-primary:hover{background:#d9694e}
+.btn-primary:disabled{opacity:.55;cursor:not-allowed}
+
+/* ── METRICS ─────────────────────────────────────────────────── */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+.metric-card{background:#fff;border:1px solid #e5ebee;border-radius:16px;padding:20px;box-shadow:0 5px 20px rgba(34,56,70,.02)}
+.metric-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.metric-label{font-size:12px;font-weight:500;color:#89979f}
+.metric-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.metric-icon.coral{background:#fff1ee;color:#e9795c}
+.metric-icon.yellow{background:#fff8e7;color:#c19229}
+.metric-icon.green{background:#eaf8f0;color:#3d9a6a}
+.metric-icon.blue{background:#edf5fb;color:#5d91b7}
+.metric-value{font-size:28px;font-weight:600;letter-spacing:-.04em;color:#26343d;margin-bottom:4px}
+.metric-note{font-size:11px;color:#98a4ab}
+
+/* ── TABLE CARD ──────────────────────────────────────────────── */
+.table-card{background:#fff;border:1px solid #e5ebee;border-radius:16px;margin-bottom:24px;box-shadow:0 5px 20px rgba(34,56,70,.025);overflow:hidden}
+.table-head{display:flex;align-items:center;justify-content:space-between;padding:20px;border-bottom:1px solid #edf0f2;gap:12px;flex-wrap:wrap}
+.table-title{font-size:16px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px}
+.table-sub{font-size:12px;color:#91a0a8}
+.table-actions{display:flex;align-items:center;gap:8px}
+.search-wrap{position:relative}
+.search-wrap i{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ba7ae;font-size:14px;pointer-events:none}
+.search-input{height:36px;padding:0 12px 0 32px;border:1px solid #e1e7ea;border-radius:8px;font-size:12px;width:200px;background:#fbfcfc;outline:none;color:#17212b;transition:border-color .12s}
+.search-input:focus{border-color:#e9795c}
+.ai-search-btn{height:36px;padding:0 14px;border:1px solid #e9795c;border-radius:8px;font-size:12px;font-weight:600;color:#e9795c;background:#fff;display:flex;align-items:center;gap:6px;transition:background .12s,color .12s}
+.ai-search-btn:hover,.ai-search-btn.active{background:#e9795c;color:#fff}
+.btn-sm{height:36px;padding:0 12px;border:1px solid #e1e7ea;border-radius:8px;font-size:12px;font-weight:500;color:#687983;background:#fff;display:flex;align-items:center;gap:6px;transition:border-color .12s,color .12s}
+.btn-sm:hover{border-color:#e9795c;color:#d7654b}
+.btn-icon{width:36px;height:36px;border-radius:8px;border:none;background:none;color:#9aa5ab;font-size:18px;display:flex;align-items:center;justify-content:center;transition:background .12s}
+.btn-icon:hover{background:#f6f8f8}
+
+/* AI search result panel */
+.ai-result{margin:0 20px 16px;padding:16px;background:#f0f7ff;border:1px solid #c8dff7;border-radius:12px;font-size:13px;line-height:1.7;color:#1a3a5c;display:none}
+.ai-result.show{display:block}
+.ai-result-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.ai-result-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#5d91b7}
+.ai-result-close{background:none;border:none;color:#8ab4d4;font-size:16px;cursor:pointer}
+
+table{width:100%;border-collapse:collapse}
+thead th{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#a2adb3;padding:12px 20px;border-bottom:1px solid #edf0f2;text-align:left;white-space:nowrap}
+tbody tr{border-bottom:1px solid #f0f3f4;transition:background .1s}
+tbody tr:last-child{border:none}
+tbody tr:hover{background:#fcfdfd}
+td{padding:14px 20px;vertical-align:middle}
+.req-cell{display:flex;align-items:center;gap:12px}
+.req-ico{width:36px;height:36px;background:#f3f6f7;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#72838d;font-size:16px;flex-shrink:0}
+.req-name{font-size:13px;font-weight:600;color:#27353e;margin-bottom:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.src-tag{background:#f4f6f7;color:#96a2a8;font-size:9px;font-weight:500;padding:2px 6px;border-radius:4px}
+.src-tag.pdf{background:#fce8e2;color:#c7523e}
+.src-tag.email{background:#e8f0fd;color:#3d6cc7}
+.req-id{font-size:11px;color:#9aa6ad}
+.badge{display:inline-flex;padding:4px 10px;border-radius:99px;font-size:10px;font-weight:600;white-space:nowrap}
+.badge.missing{background:#fff1ee;color:#c7523e}
+.badge.review{background:#fff8e7;color:#a67618}
+.badge.synced{background:#eaf8f0;color:#238653}
+.badge.pending{background:#f0f4f8;color:#5a7a9a}
+.table-footer{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-top:1px solid #edf0f2;font-size:11px;color:#9aa6ad}
+.view-all{color:#e9795c;font-weight:600;background:none;border:none;font-size:11px;display:flex;align-items:center;gap:3px}
+.empty-td{padding:40px;text-align:center;font-size:13px;color:#84929b}
+.error-td{color:#c7523e}
+
+/* ── BOTTOM GRID ─────────────────────────────────────────────── */
+.bottom-grid{display:grid;grid-template-columns:1.1fr 0.9fr;gap:24px}
+.panel{background:#fff;border:1px solid #e5ebee;border-radius:16px;padding:20px}
+.panel-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}
+.panel-title{font-size:15px;font-weight:600;margin-bottom:3px}
+.panel-sub{font-size:12px;color:#91a0a8}
+.chart-bars{display:flex;align-items:flex-end;gap:10px;height:118px;padding:0 4px}
+.chart-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px}
+.chart-bar{width:100%;max-width:36px;border-radius:4px 4px 0 0;transition:height .4s}
+.chart-bar.active{background:#e9795c}
+.chart-bar.inactive{background:#d8eee1}
+.chart-bar-label{font-size:10px;color:#a4afb5}
+.att-badge{width:28px;height:28px;border-radius:50%;background:#fff1ee;color:#c7523e;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.att-item{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #eef1f2;border-radius:12px;margin-bottom:10px;background:none;width:100%;text-align:left;transition:background .12s}
+.att-item:hover{background:#fcfdfd}
+.att-ico{width:32px;height:32px;background:#fff8e7;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#c19229;font-size:15px;flex-shrink:0}
+.att-title{font-size:12px;font-weight:600;color:#42525b;margin-bottom:2px}
+.att-sub{font-size:10px;color:#99a5ac}
+.see-all-btn{width:100%;padding:10px;margin-top:12px;background:#f8fafb;border:none;border-radius:8px;color:#e9795c;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:4px;transition:background .12s}
+.see-all-btn:hover{background:#fff4f1}
+
+/* ── MODALS ──────────────────────────────────────────────────── */
+.modal-bg{display:none;position:fixed;inset:0;z-index:200;background:rgba(23,33,43,.3);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:20px}
+.modal-bg.open{display:flex}
+.modal{width:100%;max-width:460px;background:#fff;border-radius:20px;padding:24px;box-shadow:0 20px 60px rgba(23,33,43,.18)}
+.modal-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+.modal-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px}
+.modal-icon.orange{background:#fff1ee;color:#e9795c}
+.modal-icon.blue{background:#edf5fb;color:#5d91b7}
+.modal-title{font-size:18px;font-weight:600;margin-bottom:6px}
+.modal-desc{font-size:13px;color:#84929b;line-height:1.6}
+.modal-close{width:32px;height:32px;border-radius:8px;border:none;background:none;color:#a3adb3;font-size:18px;display:flex;align-items:center;justify-content:center;transition:background .12s;flex-shrink:0}
+.modal-close:hover{background:#f5f7f8}
+.modal-info{background:#f8fafb;border-radius:12px;padding:16px;font-size:12px;color:#63737d;margin-bottom:20px}
+.modal-row{display:flex;justify-content:space-between;margin-bottom:8px}
+.modal-row:last-child{margin-bottom:0}
+.modal-val{font-weight:500;color:#27353e}
+.modal-val.accent{color:#e9795c}
+.modal-ok{color:#238653;font-weight:500;margin-top:8px;font-size:12px}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px}
+.btn-cancel{padding:8px 16px;border-radius:8px;border:none;background:none;font-size:12px;font-weight:600;color:#75848d;transition:background .12s}
+.btn-cancel:hover{background:#f5f7f8}
+
+.upload-zone{border:2px dashed #cfdde3;border-radius:12px;padding:32px 20px;text-align:center;cursor:pointer;transition:border-color .12s,background .12s;margin-bottom:20px;display:block}
+.upload-zone:hover,.upload-zone.drag{border-color:#e9795c;background:#fffaf8}
+.upload-zone i{font-size:28px;color:#e9795c;margin-bottom:10px;display:block}
+.upload-name{font-size:13px;font-weight:600;color:#52626c;margin-bottom:4px}
+.upload-hint{font-size:11px;color:#9aa6ad}
+.upload-types{display:flex;gap:6px;justify-content:center;margin-top:10px}
+.type-chip{font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid #e1e7ea;color:#96a2a8}
+
+/* ── TOAST ───────────────────────────────────────────────────── */
+#toast{position:fixed;bottom:24px;right:24px;z-index:300;background:#27353e;color:#fff;font-size:13px;font-weight:500;padding:12px 20px;border-radius:10px;box-shadow:0 8px 24px rgba(23,33,43,.2);transform:translateY(80px);opacity:0;transition:transform .25s,opacity .25s;pointer-events:none}
+#toast.show{transform:translateY(0);opacity:1}
+#toast.success{background:#1e6b3f}
+#toast.error{background:#8b2020}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinning{animation:spin .7s linear infinite;display:inline-block}
+</style>
+</head>
+<body>
+
+<div id="authOverlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+  <form class="auth-card" id="loginForm">
+    <h1 id="loginTitle">Sign in to QuotTracker</h1>
+    <p>Use the administrator credentials configured for this deployment.</p>
+    <label for="loginUsername">Username</label>
+    <input id="loginUsername" name="username" autocomplete="username" required maxlength="128">
+    <label for="loginPassword">Password</label>
+    <input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+    <div class="auth-error" id="loginError" role="alert"></div>
+    <button class="btn-primary" id="loginButton" type="submit">Sign in</button>
+  </form>
+</div>
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+  <div class="logo">
+    <div class="logo-icon"><i class="ti ti-sparkles"></i></div>
+    <div><div class="logo-name">QuotTracker</div><div class="logo-sub">Quotation tracker</div></div>
+  </div>
+  <nav>
+    <div class="nav-section">Workspace</div>
+    <div class="nav-item active"><i class="ti ti-layout-dashboard"></i>Overview</div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sf-row"><span class="sf-label">Changes this month</span><span class="sf-value" id="sfPct">—</span></div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div id="main">
+  <header id="topbar">
+    <div class="breadcrumb">
+      <span>Workspace</span><span>›</span>
+      <span class="current" id="tabLabel">Overview</span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn-sm" id="logoutBtn" type="button" data-action="logout">Sign out</button>
+    </div>
+  </header>
+
+  <div id="content">
+    <div class="inner">
+
+      <!-- PAGE HEADER -->
+      <div class="page-head">
+        <div>
+          <div class="page-date" id="pageDate"></div>
+          <div class="page-title">Procurement overview</div>
+          <div class="page-sub">Track uploaded request sheets and quotation documents.</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-outline" data-action="open-upload"><i class="ti ti-upload"></i>Add a file</button>
+        </div>
+      </div>
+
+      <!-- METRIC CARDS -->
+      <div class="metrics">
+        <div class="metric-card"><div class="metric-top"><span class="metric-label">Requests</span><span class="metric-icon coral"><i class="ti ti-inbox"></i></span></div><div class="metric-value" id="m1">—</div><div class="metric-note">Recorded requests</div></div>
+        <div class="metric-card"><div class="metric-top"><span class="metric-label">Need attention</span><span class="metric-icon yellow"><i class="ti ti-bell"></i></span></div><div class="metric-value" id="m2">—</div><div class="metric-note" id="m2note">—</div></div>
+        <div class="metric-card"><div class="metric-top"><span class="metric-label">Synced this month</span><span class="metric-icon green"><i class="ti ti-refresh"></i></span></div><div class="metric-value" id="m3">—</div><div class="metric-note">Entries confirmed</div></div>
+        <div class="metric-card"><div class="metric-top"><span class="metric-label">Recorded value</span><span class="metric-icon blue"><i class="ti ti-coin"></i></span></div><div class="metric-value" id="m4">—</div><div class="metric-note">Sum of stored amounts</div></div>
+      </div>
+
+      <!-- REQUESTS TABLE -->
+      <div class="table-card">
+        <div class="table-head">
+          <div><div class="table-title">Requests</div><div class="table-sub">Imported sheets and quotation documents</div></div>
+          <div class="table-actions">
+            <div class="search-wrap">
+              <i class="ti ti-search"></i>
+              <input class="search-input" id="searchInput" placeholder="Filter requests...">
+            </div>
+            <button class="ai-search-btn" id="aiBtn" data-action="toggle-ai">
+              <i class="ti ti-sparkles"></i> AI Search
+            </button>
+            <button class="btn-sm" data-action="export"><i class="ti ti-download"></i>Export</button>
+          </div>
+        </div>
+
+        <!-- AI search result panel -->
+        <div class="ai-result" id="aiResult">
+          <div class="ai-result-header">
+            <span class="ai-result-title"><i class="ti ti-sparkles"></i> AI Answer</span>
+            <button class="ai-result-close" data-action="close-ai"><i class="ti ti-x"></i></button>
+          </div>
+          <div id="aiResultText"></div>
+        </div>
+
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Request</th><th>Vendor</th><th>Updated</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody id="tbody"><tr><td colspan="5" class="empty-td">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="tCount">Showing 0 requests</span>
+          <div class="table-actions">
+            <button class="btn-sm" id="prevPage" type="button" data-action="prev-page" disabled>Previous</button>
+            <button class="btn-sm" id="nextPage" type="button" data-action="next-page" disabled>Next</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM GRID -->
+      <div class="bottom-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div><div class="panel-title">Activity</div><div class="panel-sub">Recorded changes over the last 7 days</div></div>
+          </div>
+          <div class="chart-bars" id="chartBars"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div><div class="panel-title">Needs your attention</div><div class="panel-sub">Missing tracker entries and vendor POs</div></div>
+            <div class="att-badge" id="attBadge">0</div>
+          </div>
+          <div id="attItems"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD MODAL -->
+<div class="modal-bg" id="uploadModal">
+  <div class="modal">
+    <div class="modal-top">
+      <div>
+        <div class="modal-icon blue"><i class="ti ti-file-upload"></i></div>
+        <div class="modal-title">Upload a file</div>
+        <div class="modal-desc">Upload a spreadsheet to sync request rows or a text-based PDF for AI-assisted extraction.</div>
+      </div>
+      <button class="modal-close" data-action="close-upload"><i class="ti ti-x"></i></button>
+    </div>
+    <label class="upload-zone" id="dropZone">
+      <i class="ti ti-upload"></i>
+      <div class="upload-name" id="fileName">Click to choose or drag a file here</div>
+      <div class="upload-hint">Supported formats:</div>
+      <div class="upload-types">
+        <span class="type-chip">Excel .xlsx</span>
+        <span class="type-chip">Excel .xls</span>
+        <span class="type-chip">CSV .csv</span>
+        <span class="type-chip">PDF .pdf</span>
+      </div>
+      <input type="file" accept=".xlsx,.xls,.csv,.pdf" id="fileInput" style="display:none">
+    </label>
+    <div class="modal-footer">
+      <button class="btn-cancel" data-action="close-upload">Cancel</button>
+      <button class="btn-primary" id="upBtn" disabled data-action="upload"><i class="ti ti-upload"></i> Upload</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script nonce="__CSP_NONCE__">
+const API = ''
+const PAGE_SIZE = 25
+let selectedFile = null, aiMode = false
+let csrfToken = '', pageOffset = 0, refreshTimer = null, searchTimer = null
+
+document.body.classList.add('auth-locked')
+document.getElementById('pageDate').textContent =
+  new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}).toUpperCase()
+document.getElementById('loginForm').addEventListener('submit', submitLogin)
+document.getElementById('fileInput').addEventListener('change', e => onFile(e.target))
+document.getElementById('uploadModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeUpload()
+})
+document.getElementById('searchInput').addEventListener('input', () => filterRows())
+document.addEventListener('click', handleAction)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeUpload()
+  if (e.key === 'Enter' && aiMode && e.target.id === 'searchInput') runAiSearch(e.target.value)
+})
+initializeAuth()
+
+async function apiRequest(url, options={}) {
+  const method = (options.method || 'GET').toUpperCase()
+  const headers = new Headers(options.headers || {})
+  if (!['GET','HEAD','OPTIONS'].includes(method) && csrfToken) headers.set('X-CSRF-Token', csrfToken)
+  const response = await fetch(url, {...options, headers, credentials:'same-origin'})
+  if (response.status === 401) {
+    lockApplication()
+    throw new Error('Your session has expired. Please sign in again.')
+  }
+  return response
+}
+
+async function apiJson(url, options={}) {
+  const response = await apiRequest(url, options)
+  let data = {}
+  try { data = await response.json() } catch {}
+  if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`)
+  return data
+}
+
+async function initializeAuth() {
+  try {
+    const status = await apiJson(`${API}/api/auth/status`)
+    if (status.authenticated) {
+      csrfToken = status.csrf_token
+      unlockApplication()
+      await fetchAll()
+      refreshTimer = setInterval(fetchAll, 30000)
+    } else {
+      lockApplication()
+    }
+  } catch {
+    showLoginError('Could not connect to the service. Refresh and try again.')
+  }
+}
+
+async function submitLogin(event) {
+  event.preventDefault()
+  const form = event.currentTarget
+  const button = document.getElementById('loginButton')
+  const error = document.getElementById('loginError')
+  button.disabled = true
+  error.textContent = ''
+  try {
+    const values = new FormData(form)
+    const result = await apiJson(`${API}/api/auth/login`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        username:values.get('username'),
+        password:values.get('password')
+      })
+    })
+    csrfToken = result.csrf_token
+    form.reset()
+    unlockApplication()
+    await fetchAll()
+    if (!refreshTimer) refreshTimer = setInterval(fetchAll, 30000)
+  } catch (err) {
+    error.textContent = err.message
+  } finally {
+    button.disabled = false
+  }
+}
+
+async function logout() {
+  try {
+    await apiJson(`${API}/api/auth/logout`, {method:'POST'})
+    csrfToken = ''
+    if (refreshTimer) clearInterval(refreshTimer)
+    refreshTimer = null
+    lockApplication()
+  } catch (err) {
+    toast(err.message, 'error')
+  }
+}
+
+function unlockApplication() {
+  document.body.classList.remove('auth-locked')
+  document.getElementById('authOverlay').hidden = true
+}
+
+function lockApplication() {
+  document.body.classList.add('auth-locked')
+  document.getElementById('authOverlay').hidden = false
+  if (refreshTimer) clearInterval(refreshTimer)
+  refreshTimer = null
+}
+
+function showLoginError(message) {
+  document.getElementById('loginError').textContent = message
+}
+
+function handleAction(event) {
+  const target = event.target.closest('[data-action]')
+  if (!target) return
+  const actions = {
+    'logout': logout,
+    'open-upload': openUpload,
+    'close-upload': closeUpload,
+    'upload': doUpload,
+    'export': doExport,
+    'toggle-ai': toggleAiSearch,
+    'close-ai': closeAiResult,
+    'prev-page': () => changePage(-1),
+    'next-page': () => changePage(1)
+  }
+  actions[target.dataset.action]?.()
+}
+
+function fmtShort(value) {
+  const amount = Number(value || 0)
+  if (Math.abs(amount) >= 1e6) return (amount/1e6).toFixed(1)+'M'
+  if (Math.abs(amount) >= 1000) return (amount/1000).toFixed(1)+'k'
+  return amount.toLocaleString()
+}
+function fmtFull(value) {
+  return value === null || value === undefined ? '—' : Number(value).toLocaleString()
+}
+function badgeClass(status) {
+  const value = String(status || '').toLowerCase()
+  if (value.includes('miss')) return 'missing'
+  if (value.includes('sync') || value.includes('approv') || value.includes('complet')) return 'synced'
+  if (!value || value.includes('pending')) return 'pending'
+  return 'review'
+}
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[char])
+}
+function srcTag(source) {
+  const labels = {PDF:'PDF', Email:'Email', Sheet:'Sheet', Manual:'Manual'}
+  const label = labels[source] || 'Sheet'
+  const css = label === 'PDF' ? 'pdf' : label === 'Email' ? 'email' : ''
+  return `<span class="src-tag ${css}">${label}</span>`
+}
+function toast(message, type='', ms=3500) {
+  const element = document.getElementById('toast')
+  element.textContent = message
+  element.className = type ? `show ${type}` : 'show'
+  setTimeout(() => { element.className = '' }, ms)
+}
+
+function renderStats(stats) {
+  document.getElementById('m1').textContent = stats.open_requests
+  document.getElementById('m2').textContent = stats.need_attention
+  document.getElementById('m2note').textContent =
+    `${stats.need_attention} item${stats.need_attention === 1 ? '' : 's'} pending`
+  document.getElementById('m3').textContent = stats.synced_this_month
+  document.getElementById('m4').textContent = fmtShort(stats.estimated_value)
+  document.getElementById('sfPct').textContent = stats.synced_this_month
+}
+
+function renderRows(rows, total) {
+  const tbody = document.getElementById('tbody')
+  const shownFrom = total ? pageOffset + 1 : 0
+  const shownTo = Math.min(pageOffset + rows.length, total)
+  document.getElementById('tCount').textContent =
+    `Showing ${shownFrom}-${shownTo} of ${total} requests`
+  document.getElementById('prevPage').disabled = pageOffset === 0
+  document.getElementById('nextPage').disabled = pageOffset + PAGE_SIZE >= total
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-td">${
+      total ? 'No requests on this page.' : 'No requests yet. Upload a spreadsheet or quotation PDF.'
+    }</td></tr>`
+    return
+  }
+  tbody.innerHTML = rows.map(row => `<tr>
+    <td><div class="req-cell">
+      <div class="req-ico"><i class="ti ti-file-spreadsheet"></i></div>
+      <div>
+        <div class="req-name">${esc(row.door_name || '—')} ${srcTag(row.source)}</div>
+        <div class="req-id">${esc(row.request_no || '—')}</div>
+      </div>
+    </div></td>
+    <td style="font-size:12px;color:#62737d">${esc(row.vendor || row.brand || '—')}</td>
+    <td style="font-size:12px;color:#84929b">${esc(row.updated || '—')}</td>
+    <td style="font-size:12px;font-weight:600;color:#3d4d56">${fmtFull(row.amount)}</td>
+    <td><span class="badge ${badgeClass(row.status)}">${esc(row.status || 'Pending')}</span></td>
+  </tr>`).join('')
+}
+
+function filterRows() {
+  if (aiMode) return
+  pageOffset = 0
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(fetchAll, 250)
+}
+
+function changePage(direction) {
+  pageOffset = Math.max(0, pageOffset + direction * PAGE_SIZE)
+  fetchAll()
+}
+
+function toggleAiSearch() {
+  aiMode = !aiMode
+  const button = document.getElementById('aiBtn')
+  const input = document.getElementById('searchInput')
+  button.classList.toggle('active', aiMode)
+  input.placeholder = aiMode ? 'Ask a question about your tracker…' : 'Filter requests…'
+  if (aiMode) {
+    input.oninput = null
+    runAiSearch(input.value)
+  } else {
+    input.oninput = () => filterRows(input.value)
+    closeAiResult()
+  }
+}
+
+async function runAiSearch(query) {
+  if (!query.trim()) return
+  const panel = document.getElementById('aiResult')
+  const text = document.getElementById('aiResultText')
+  panel.classList.add('show')
+  text.textContent = 'Searching…'
+  try {
+    const data = await apiJson(`${API}/api/search?q=${encodeURIComponent(query)}`)
+    text.textContent = data.result || 'No results found.'
+  } catch (err) {
+    text.textContent = err.message
+  }
+}
+
+function closeAiResult() {
+  document.getElementById('aiResult').classList.remove('show')
+}
+
+function renderChart(data) {
+  const max = Math.max(...data.map(item => item.count), 1)
+  document.getElementById('chartBars').innerHTML = data.map(item => `
+    <div class="chart-bar-wrap" title="${esc(item.day)}: ${Number(item.count)} changes">
+      <div class="chart-bar ${item.count ? 'active' : 'inactive'}"
+        style="height:${item.count ? Math.max(Math.round(item.count/max*84),6) : 0}%"></div>
+      <span class="chart-bar-label">${esc(item.day)}</span>
+    </div>`).join('')
+}
+
+function renderAttention(items, total) {
+  document.getElementById('attBadge').textContent = total
+  document.getElementById('attItems').innerHTML = !items.length
+    ? '<div class="att-item"><div class="att-ico"><i class="ti ti-circle-check"></i></div><div><div class="att-title">No outstanding items</div><div class="att-sub">No missing tracker entries or vendor POs.</div></div></div>'
+    : items.map(item => `<div class="att-item">
+        <div class="att-ico"><i class="ti ti-file-spreadsheet"></i></div>
+        <div style="min-width:0;text-align:left"><div class="att-title">${esc(item.title)}</div><div class="att-sub">${esc(item.description)}</div></div>
+      </div>`).join('')
+}
+
+async function fetchAll() {
+  try {
+    const search = aiMode ? '' : document.getElementById('searchInput').value
+    const [stats, requests, attention, activity] = await Promise.all([
+      apiJson(`${API}/api/stats`),
+      apiJson(`${API}/api/requests?limit=${PAGE_SIZE}&offset=${pageOffset}&search=${encodeURIComponent(search)}`),
+      apiJson(`${API}/api/attention`),
+      apiJson(`${API}/api/activity`)
+    ])
+    renderStats(stats)
+    renderRows(requests.items || [], requests.total || 0)
+    renderAttention(attention.items || [], attention.total || 0)
+    renderChart(activity || [])
+  } catch (err) {
+    if (document.body.classList.contains('auth-locked')) return
+    document.getElementById('tbody').innerHTML =
+      `<tr><td colspan="5" class="empty-td error-td">${esc(err.message || 'Could not load tracker data.')}</td></tr>`
+  }
+}
+
+function openUpload() {
+  document.getElementById('uploadModal').classList.add('open')
+  document.getElementById('fileName').textContent = 'Click to choose or drag a file here'
+  document.getElementById('upBtn').disabled = true
+  selectedFile = null
+  document.getElementById('fileInput').value = ''
+}
+function closeUpload() { document.getElementById('uploadModal').classList.remove('open') }
+
+function onFile(input) {
+  selectedFile = input.files[0] || null
+  document.getElementById('fileName').textContent =
+    selectedFile ? selectedFile.name : 'Click to choose or drag a file here'
+  document.getElementById('upBtn').disabled = !selectedFile
+}
+
+async function doUpload() {
+  if (!selectedFile) return
+  const button = document.getElementById('upBtn')
+  button.disabled = true
+  button.textContent = 'Processing…'
+  try {
+    const form = new FormData()
+    form.append('file', selectedFile)
+    const data = await apiJson(`${API}/api/upload`, {method:'POST', body:form})
+    await fetchAll()
+    toast(data.message || 'File processed.', 'success')
+    closeUpload()
+  } catch (err) {
+    toast(err.message, 'error', 5000)
+  } finally {
+    button.innerHTML = '<i class="ti ti-upload"></i> Upload'
+    button.disabled = !selectedFile
+  }
+}
+
+async function doExport() {
+  try {
+    const response = await apiRequest(`${API}/api/export`)
+    if (!response.ok) throw new Error(`Export failed (${response.status})`)
+    const objectUrl = URL.createObjectURL(await response.blob())
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = 'tracker_export.xlsx'
+    link.click()
+    URL.revokeObjectURL(objectUrl)
+  } catch (err) {
+    toast(err.message, 'error')
+  }
+}
+
+const dropZone = document.getElementById('dropZone')
+dropZone.addEventListener('dragover', event => {
+  event.preventDefault()
+  dropZone.classList.add('drag')
+})
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'))
+dropZone.addEventListener('drop', event => {
+  event.preventDefault()
+  dropZone.classList.remove('drag')
+  const file = event.dataTransfer.files[0]
+  if (file) {
+    selectedFile = file
+    document.getElementById('fileName').textContent = file.name
+    document.getElementById('upBtn').disabled = false
+  }
+})
+</script>
+</body>
+</html>

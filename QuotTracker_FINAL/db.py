@@ -50,6 +50,20 @@ def init_db():
         synced_at         TEXT,
         created_at        TEXT,
         updated_at        TEXT)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS quote_items (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_no    TEXT NOT NULL,
+        element       TEXT,
+        category      TEXT,
+        brand         TEXT,
+        amount_sar    REAL,
+        amount_usd    REAL,
+        created_at    TEXT NOT NULL,
+        FOREIGN KEY(request_no) REFERENCES tracker(request_no) ON DELETE CASCADE)""")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_quote_items_request "
+        "ON quote_items(request_no, id)"
+    )
     conn.execute("""CREATE TABLE IF NOT EXISTS audit_log (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         request_no    TEXT,
@@ -171,6 +185,41 @@ def get_tracker_row(conn, request_no: str) -> dict | None:
     r = conn.execute("SELECT * FROM tracker WHERE request_no=?",
                      (request_no,)).fetchone()
     return dict(r) if r else None
+
+
+def insert_quote_items(conn, request_no: str, items: list[dict], source: str = "pdf"):
+    if not items:
+        return
+    created_at = _now()
+    conn.executemany(
+        """INSERT INTO quote_items
+            (request_no, element, category, brand, amount_sar, amount_usd, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        [
+            (
+                request_no,
+                item.get("element"),
+                item.get("category"),
+                item.get("brand"),
+                item.get("amount_sar"),
+                item.get("amount_usd"),
+                created_at,
+            )
+            for item in items
+        ],
+    )
+    _log(conn, request_no, "INSERT", "quote_items", None, items, source)
+
+
+def get_quote_items_by_request(conn) -> dict[str, list[dict]]:
+    rows = conn.execute(
+        "SELECT request_no, element, category, brand, amount_sar, amount_usd "
+        "FROM quote_items ORDER BY request_no, id"
+    ).fetchall()
+    result: dict[str, list[dict]] = {}
+    for row in rows:
+        result.setdefault(row["request_no"], []).append(dict(row))
+    return result
 
 
 def get_row_count(conn) -> int:

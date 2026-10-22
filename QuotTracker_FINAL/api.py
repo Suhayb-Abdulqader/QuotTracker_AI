@@ -8,6 +8,7 @@ import tempfile
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import openpyxl
 from dotenv import load_dotenv
@@ -23,7 +24,13 @@ load_dotenv(BASE_DIR / ".env")
 
 import auth
 import db
-from ai_helper import AIServiceError, answer_search, extract_from_document, extract_text_from_pdf
+from ai_helper import (
+    AIServiceError,
+    SAR_PER_USD,
+    answer_search,
+    extract_from_document,
+    extract_text_from_pdf,
+)
 from sync import run_sync
 
 
@@ -136,6 +143,11 @@ class LoginBody(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
+class RequestStatusUpdate(BaseModel):
+    request_no: str = Field(min_length=1, max_length=128)
+    status: Literal["Pending", "Approved", "Missing"]
+
+
 @app.get("/", response_class=HTMLResponse)
 def serve_frontend(request: Request):
     nonce = secrets.token_urlsafe(18)
@@ -161,12 +173,9 @@ def auth_status(request: Request):
 
 @app.post("/api/auth/login")
 def login(body: LoginBody, request: Request):
-    auth.ensure_login_not_limited(request)
     if not auth.credentials_match(body.username, body.password):
-        auth.record_login_failure(request)
         raise HTTPException(status_code=401, detail="Invalid username or password.")
 
-    auth.clear_login_failures(request)
     request.session.clear()
     request.session["authenticated"] = True
     request.session["csrf_token"] = auth.new_csrf_token()
@@ -294,6 +303,7 @@ def requests_list(
         combined.append({
             **row,
             "vendor": row.get("brand") or "—",
+            "status_editable": True,
             "updated": _format_updated(raw_updated),
             "source": _display_source(log.get("source", "sync")),
             "_sort_updated": raw_updated,
@@ -304,6 +314,7 @@ def requests_list(
             combined.append({
                 **row,
                 "vendor": row.get("brand") or "—",
+                "status_editable": False,
                 "updated": _format_updated(raw_updated),
                 "amount": None,
                 "status": "Missing",
@@ -329,6 +340,27 @@ def requests_list(
     for row in page:
         row.pop("_sort_updated", None)
     return {"total": total, "items": page}
+
+
+@app.patch(
+    "/api/request-status",
+    dependencies=[authenticated(), csrf_protected()],
+)
+def update_request_status(body: RequestStatusUpdate):
+    conn = db.get_db()
+    try:
+        if not db.get_tracker_row(conn, body.request_no):
+            raise HTTPException(status_code=404, detail="Tracker record not found.")
+        db.update_tracker_row(
+            conn, body.request_no, {"Status": body.status}, source="manual"
+        )
+        conn.commit()
+        return {"request_no": body.request_no, "status": body.status}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _format_updated(raw: str) -> str:
@@ -444,6 +476,16 @@ async def upload_file(file: UploadFile = File(...)):
                 "Amount": extracted.get("amount"),
                 "Status": "Pending",
             }
+            quote_items = extracted.get("line_items") or [{
+                "element": None,
+                "category": extracted.get("category"),
+                "brand": extracted.get("brand"),
+                "amount_sar": extracted.get("amount_sar"),
+                "amount_usd": extracted.get("amount_usd"),
+            }]
+            for item in quote_items:
+                item.setdefault("category", extracted.get("category"))
+                item.setdefault("brand", extracted.get("brand"))
             conn = db.get_db()
             try:
                 if db.get_tracker_row(conn, request_no):
@@ -456,6 +498,9 @@ async def upload_file(file: UploadFile = File(...)):
                     raise HTTPException(
                         status_code=409, detail="The record already exists."
                     )
+                db.insert_quote_items(
+                    conn, request_no, quote_items, source="pdf"
+                )
                 conn.commit()
             except Exception:
                 conn.rollback()
@@ -519,6 +564,7 @@ def export():
     conn = db.get_db()
     try:
         rows = db.get_all_tracker(conn)
+        items_by_request = db.get_quote_items_by_request(conn)
     finally:
         conn.close()
 
@@ -526,18 +572,34 @@ def export():
     sheet = workbook.active
     sheet.title = "Tracker"
     sheet.append([
-        "Request No", "Door Name", "Quotation No", "Vendor PO", "Brand",
-        "Request Date", "Installation Date", "Amount", "Status",
-        "SharePoint Folder",
+        "Request No", "Door Name", "Element", "Amount USD", "Amount SAR",
+        "Category", "Brand",
     ])
     for row in rows:
-        values = [
-            row.get("request_no"), row.get("door_name"), row.get("quotation_no"),
-            row.get("vendor_po"), row.get("brand"), row.get("request_date"),
-            row.get("installation_date"), row.get("amount"), row.get("status"),
-            row.get("sharepoint_folder"),
-        ]
-        sheet.append([_safe_spreadsheet_value(value) for value in values])
+        quote_items = items_by_request.get(row["request_no"]) or [{
+            "element": None,
+            "category": None,
+            "brand": row.get("brand"),
+            "amount_sar": row.get("amount"),
+            "amount_usd": (
+                round(float(row["amount"]) / SAR_PER_USD, 2)
+                if row.get("amount") is not None
+                else None
+            ),
+        }]
+        for item in quote_items:
+            values = [
+                row.get("request_no"),
+                row.get("door_name"),
+                item.get("element"),
+                item.get("amount_usd"),
+                item.get("amount_sar"),
+                item.get("category"),
+                item.get("brand") or row.get("brand"),
+            ]
+            sheet.append([_safe_spreadsheet_value(value) for value in values])
+            sheet.cell(sheet.max_row, 4).number_format = '$#,##0.00'
+            sheet.cell(sheet.max_row, 5).number_format = '"SAR" #,##0.00'
 
     output = io.BytesIO()
     workbook.save(output)

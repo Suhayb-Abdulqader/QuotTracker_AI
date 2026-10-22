@@ -3,8 +3,6 @@
 import hmac
 import os
 import secrets
-import time
-from collections import defaultdict, deque
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException, Request
@@ -31,50 +29,6 @@ if ADMIN_PASSWORD.lower().startswith("replace-with-"):
     raise RuntimeError("ADMIN_PASSWORD must not use the example placeholder.")
 if APP_ENV == "production" and not COOKIE_SECURE:
     raise RuntimeError("COOKIE_SECURE=true is required when APP_ENV=production.")
-
-_failed_logins: dict[str, deque[float]] = defaultdict(deque)
-_login_window_seconds = 15 * 60
-_max_login_attempts = 5
-
-
-def _client_key(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
-
-
-def ensure_login_not_limited(request: Request) -> None:
-    now = time.monotonic()
-    if len(_failed_logins) >= 4096:
-        expired_keys = [
-            key for key, entries in _failed_logins.items()
-            if not entries or now - entries[-1] > _login_window_seconds
-        ]
-        for key in expired_keys:
-            _failed_logins.pop(key, None)
-        if len(_failed_logins) >= 4096:
-            oldest_key = min(
-                _failed_logins,
-                key=lambda key: _failed_logins[key][-1] if _failed_logins[key] else 0,
-            )
-            _failed_logins.pop(oldest_key, None)
-    attempts = _failed_logins[_client_key(request)]
-    while attempts and now - attempts[0] > _login_window_seconds:
-        attempts.popleft()
-    if len(attempts) >= _max_login_attempts:
-        retry_after = max(1, int(_login_window_seconds - (now - attempts[0])))
-        raise HTTPException(
-            status_code=429,
-            detail="Too many unsuccessful login attempts. Try again later.",
-            headers={"Retry-After": str(retry_after)},
-        )
-
-
-def record_login_failure(request: Request) -> None:
-    _failed_logins[_client_key(request)].append(time.monotonic())
-
-
-def clear_login_failures(request: Request) -> None:
-    _failed_logins.pop(_client_key(request), None)
-
 
 def credentials_match(username: str, password: str) -> bool:
     username_matches = hmac.compare_digest(

@@ -28,6 +28,16 @@ field mapping and does not call the AI service.
 Use a persistent, access-controlled disk for cloud deployment and back it up
 with the application's write activity stopped.
 
+After uploading a quotation PDF or spreadsheet, change a tracked request's
+status in the Requests table to Pending, Approved, or Missing. Manual status
+changes are recorded in the audit log.
+
+PDF exports contain one row per extracted quotation element, with Door Name,
+Element, Amount USD, Amount SAR, Category, and Brand. The USD/SAR conversion
+uses `SAR_PER_USD` (default `3.75` SAR per USD); change it in local `.env` or
+the deployment environment when needed. If a quotation does not state its own
+Door Name, the project/event title is used.
+
 ## Local startup
 
 Install dependencies and initialize an empty schema:
@@ -54,9 +64,8 @@ credentials. Upload a spreadsheet or quotation PDF to add records.
 - Keep the SQLite database on persistent local block storage. This build is
   intended for one application instance and one Uvicorn worker. Do not use
   ephemeral/container storage or a network filesystem for the SQLite file.
-- The login throttling state is process-local. For multiple workers or replicas,
-  replace SQLite with a managed database and use shared rate-limit storage
-  before scaling out.
+- Login attempts are not rate-limited in this build. Do not expose it publicly
+  without adding login rate limiting at a trusted reverse proxy or gateway.
 - Configure platform-level request-size limits, monitoring, alerting, backups,
   and restore drills. The application rejects uploads larger than 10 MB.
 - Rotate any Groq credential that may have been exposed, then set the new value

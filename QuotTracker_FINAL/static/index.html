@@ -142,6 +142,8 @@ td{padding:14px 20px;vertical-align:middle}
 .badge.review{background:#fff8e7;color:#a67618}
 .badge.synced{background:#eaf8f0;color:#238653}
 .badge.pending{background:#f0f4f8;color:#5a7a9a}
+.status-select{border:0;cursor:pointer;font-family:inherit}
+.status-select:focus-visible{outline:2px solid #527ba5;outline-offset:2px}
 .table-footer{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-top:1px solid #edf0f2;font-size:11px;color:#9aa6ad}
 .view-all{color:#e9795c;font-weight:600;background:none;border:none;font-size:11px;display:flex;align-items:center;gap:3px}
 .empty-td{padding:40px;text-align:center;font-size:13px;color:#84929b}
@@ -341,7 +343,7 @@ td{padding:14px 20px;vertical-align:middle}
       <div>
         <div class="modal-icon blue"><i class="ti ti-file-upload"></i></div>
         <div class="modal-title">Upload a file</div>
-        <div class="modal-desc">Upload a spreadsheet to sync request rows or a text-based PDF for AI-assisted extraction.</div>
+        <div class="modal-desc">Upload a spreadsheet to sync request rows or a text-based PDF for AI-assisted extraction. Change each record’s status in the Requests table.</div>
       </div>
       <button class="modal-close" data-action="close-upload"><i class="ti ti-x"></i></button>
     </div>
@@ -377,6 +379,7 @@ document.getElementById('pageDate').textContent =
   new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}).toUpperCase()
 document.getElementById('loginForm').addEventListener('submit', submitLogin)
 document.getElementById('fileInput').addEventListener('change', e => onFile(e.target))
+document.getElementById('tbody').addEventListener('change', handleStatusChange)
 document.getElementById('uploadModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeUpload()
 })
@@ -514,6 +517,19 @@ function badgeClass(status) {
   if (!value || value.includes('pending')) return 'pending'
   return 'review'
 }
+function renderStatus(row) {
+  const status = String(row.status || 'Pending')
+  if (!row.status_editable) {
+    return `<span class="badge ${badgeClass(status)}">${esc(status)}</span>`
+  }
+  const options = ['Pending', 'Approved', 'Missing']
+  if (!options.includes(status)) options.unshift(status)
+  return `<select class="status-select badge ${badgeClass(status)}"
+      aria-label="Status for request ${esc(row.request_no)}"
+      data-request-no="${esc(row.request_no)}">
+    ${options.map(option => `<option value="${esc(option)}"${option === status ? ' selected' : ''}>${esc(option)}</option>`).join('')}
+  </select>`
+}
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
@@ -567,8 +583,31 @@ function renderRows(rows, total) {
     <td style="font-size:12px;color:#62737d">${esc(row.vendor || row.brand || '—')}</td>
     <td style="font-size:12px;color:#84929b">${esc(row.updated || '—')}</td>
     <td style="font-size:12px;font-weight:600;color:#3d4d56">${fmtFull(row.amount)}</td>
-    <td><span class="badge ${badgeClass(row.status)}">${esc(row.status || 'Pending')}</span></td>
+    <td>${renderStatus(row)}</td>
   </tr>`).join('')
+}
+
+async function handleStatusChange(event) {
+  const control = event.target
+  if (!control.matches('.status-select')) return
+  control.disabled = true
+  try {
+    await apiJson(`${API}/api/request-status`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        request_no:control.dataset.requestNo,
+        status:control.value
+      })
+    })
+    toast('Status updated.', 'success')
+    await fetchAll()
+  } catch (err) {
+    toast(err.message, 'error', 5000)
+    await fetchAll()
+  } finally {
+    control.disabled = false
+  }
 }
 
 function filterRows() {
